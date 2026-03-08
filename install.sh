@@ -86,12 +86,14 @@ if [[ "$AUTO_GIT_INIT" =~ ^[Yy]$ ]]; then
     fi
 fi
 
-# Save configuration
+# Save configuration securely
 CONFIG_FILE="$HOME/.bmad-init-rc"
-echo "BMAD_TOOLS=\"$BMAD_TOOLS\"" > "$CONFIG_FILE"
-echo "AUTO_GIT_INIT=\"$AUTO_GIT_INIT\"" >> "$CONFIG_FILE"
-echo "GIT_NAME=\"$GIT_NAME\"" >> "$CONFIG_FILE"
-echo "GIT_EMAIL=\"$GIT_EMAIL\"" >> "$CONFIG_FILE"
+{
+    printf "BMAD_TOOLS=%q\n" "$BMAD_TOOLS"
+    printf "AUTO_GIT_INIT=%q\n" "$AUTO_GIT_INIT"
+    printf "GIT_NAME=%q\n" "$GIT_NAME"
+    printf "GIT_EMAIL=%q\n" "$GIT_EMAIL"
+} > "$CONFIG_FILE"
 
 echo -e "${GREEN}Configuration saved to $CONFIG_FILE${NC}"
 
