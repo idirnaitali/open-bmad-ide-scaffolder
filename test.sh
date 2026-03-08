@@ -64,6 +64,16 @@ cat << 'EOF' > "$TEST_ROOT/bin/npx"
 # If the caller is passing `bmad-method`, we intercept it!
 if [ "$1" = "bmad-method" ]; then
     echo "MOCK: npx $@"
+    
+    # Simulate strict Commander.js behavior:
+    # If any argument passed to npx contains a space, throw the 'too many arguments' error.
+    for arg in "$@"; do
+        if [[ "$arg" == *" "* ]]; then
+            echo "error: too many arguments for 'install'. Expected 0 arguments but got 1." >&2
+            exit 1
+        fi
+    done
+
     # Fake a successful installation by dropping empty folders
     mkdir -p .agent _bmad _bmad-output
     exit 0 # fake success!
@@ -220,7 +230,18 @@ assert_contains "$HOME/.bmad-init-rc" "AUTO_GIT_INIT=N"
 assert_contains "$HOME/.bmad-init-rc" "AUTO_GIT_IGNORE=N"
 
 # ------------------------------------------------------------------
-echo -e "\n${BLUE}[TEST 8] Should fail gracefully and show red error message when npx installation crashes${NC}"
+echo -e "\n${BLUE}[TEST 8] Should successfully parse multi-tool inputs with spaces by stripping them${NC}"
+mkdir -p "$TEST_ROOT/proj6"
+cd "$TEST_ROOT/proj6"
+# Deliberately introduce spaces inside the tools string to verify the fix works.
+"$SRC_DIR/bmad-init" --yes -t "antigravity, copilot, windsurf" > out.log
+# Ensure npx did not crash and correctly initialized the project.
+assert_file_exists ".agent"
+# Ensure the mock recorded the command execution without spaces!
+assert_contains "out.log" "antigravity,copilot,windsurf"
+
+# ------------------------------------------------------------------
+echo -e "\n${BLUE}[TEST 9] Should fail gracefully and show red error message when npx installation crashes${NC}"
 # Hijack our mock NPX again, but this time, make it instantly fail.
 cat << 'EOF' > "$TEST_ROOT/bin/npx"
 #!/bin/bash
@@ -235,7 +256,7 @@ cd "$TEST_ROOT/proj5"
 assert_contains "out.log" "installation failed"
 
 # ------------------------------------------------------------------
-echo -e "\n${BLUE}[TEST 9] Should install CLI properly securely and save defaults when install.sh is executed${NC}"
+echo -e "\n${BLUE}[TEST 10] Should install CLI properly securely and save defaults when install.sh is executed${NC}"
 # Simulate an interactive user pressing keys: 'y', 'fake-tool', 'y', 'y', then Enter.
 echo -e "y\nfake-tool\ny\ny\n" | "$SRC_DIR/install.sh" > "$TEST_ROOT/install_out.log" 2>&1
 # Ensure the binary was copied to our fake global folder.
@@ -246,7 +267,7 @@ assert_contains "$TEST_ROOT/install_out.log" "Installation Complete"
 assert_contains "$HOME/.bmad-init-rc" "fake-tool"
 
 # ------------------------------------------------------------------
-echo -e "\n${BLUE}[TEST 10] Should completely remove executable and config file when uninstall.sh is executed${NC}"
+echo -e "\n${BLUE}[TEST 11] Should completely remove executable and config file when uninstall.sh is executed${NC}"
 # Pass an automatic "y" to confirm the destructive action.
 echo "y" | "$SRC_DIR/uninstall.sh" > "$TEST_ROOT/uninstall_out.log"
 # Ensure the executable was wiped from the target directory.
