@@ -1,9 +1,37 @@
+---
+title: Open BMAD IDE Scaffolder (bmad-init)
+description: A robust CLI tool to instantly initialize the BMAD-METHOD environment inside any project.
+author: Idir NAIT ALI
+date: 2026-03-08
+---
+
 # Open BMAD IDE Scaffolder
 
 [![Open Source Love](https://badges.frapsoft.com/os/v2/open-source.svg?v=103)](https://github.com/ellerbrock/open-source-badges/)
 [![Bash Shell](https://img.shields.io/badge/Language-Bash-4EAA25.svg)](https://www.gnu.org/software/bash/)
 
-A robust, flexible, and open-source command-line tool designed to instantly initialize the **BMAD-METHOD** environment inside any project.
+A robust, flexible, and open-source command-line tool designed to instantly initialize the **BMAD-METHOD** (Agile AI-Driven Development) environment inside any project.
+
+## 🎯 What does it do?
+
+Running the `bmad-init` tool will automatically:
+
+1. Validate required prerequisites (`node`, `npx`).
+2. Download and configure the [BMAD Core framework](https://docs.bmad-method.org/) and AI modules (e.g., creating the `_bmad/` setup).
+3. Set up specific configuration files for your AI Tools (`Antigravity`, `Cursor`, `Roo-Cline`, `Copilot`, `Windsurf`).
+4. Safely manage Git initialization and append BMAD folders to your `.gitignore`.
+5. Prepare initial Git commits to leave your repository clean and ready.
+
+## Table of Contents
+
+- [What does it do?](#-what-does-it-do)
+- [Why bmad-init?](#-why-bmad-init)
+- [Installation](#-installation)
+- [Usage](#️-usage)
+- [Global Configuration](#️-global-configuration)
+- [Uninstallation](#️-uninstallation)
+- [Testing](#-testing)
+- [Contributing](#-contributing)
 
 ## ✨ Why `bmad-init`?
 
@@ -13,8 +41,11 @@ The `bmad-init` CLI turns this entire tedious process into **a single fast, inte
 
 ### 💡 Global vs Local Installation
 
-* **Global CLI Usage**: If you only use BMAD via your system terminal, you don't need to install the framework in every project.
-* **IDE Agents (Antigravity, Cursor, etc.)**: For AI Agents working within your IDE to function correctly using local commands (e.g., using the `.` prefix), the BMAD framework **must be installed physically inside each workspace/project**.
+- **Global CLI Usage**: If you only use BMAD via your system terminal, you don't need to install the framework in every project.
+- **IDE Agents (Antigravity, Cursor, etc.)**: For AI Agents working within your IDE to function correctly using local commands (e.g., using the `.` prefix), the BMAD framework **must be installed physically inside each workspace/project**.
+
+**⚠️ Crucial context for Antigravity users:**
+Unlike some native IDE extensions (like Roo-Cline or Gemini) that might inject global `/slash-commands` directly into your prompt bar, **Antigravity relies entirely on reading physical files within your active workspace.** Because you cannot just type `/bmad-master` out of nowhere, you **absolutely need** `bmad-init` to scaffold the `_bmad` configuration and workflow files directly into your project directory. Once scaffolded, Antigravity gains the full context and custom behaviors automatically.
 
 This Scaffolder is specifically designed to make this per-project local installation effortless for your AI-driven development flow.
 
@@ -96,7 +127,7 @@ If you wish to remove the tool and its configuration from your machine completel
 
 ---
 
-## � Testing
+## 🧪 Testing
 
 To guarantee that the CLI tools are fully functional and safe across various environments without actually installing anything or performing actual API calls, a test environment script is provided.
 
@@ -110,6 +141,6 @@ Run the test suite safely from the root:
 
 ---
 
-## �🤝 Contributing
+## 🤝 Contributing
 
 This CLI is fully open source. Feel free to submit an issue, propose new flags, or make a Pull Request!
