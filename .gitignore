@@ -3,3 +3,6 @@
 .agent/
 _bmad/
 _bmad-output/
+
+# IDE artifactsc
+.idea/
