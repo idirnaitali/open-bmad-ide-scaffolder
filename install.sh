@@ -7,116 +7,90 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-echo -e "${BLUE}=== Interactive BMAD Installer ===${NC}"
+echo -e "${BLUE}=== Open BMAD IDE Scaffolder - Installer ===${NC}"
 
-# Check and offer to install prerequisites
-install_prereqs() {
-    if ! command -v node &> /dev/null || ! command -v npx &> /dev/null; then
-        echo -e "${YELLOW}Node.js and npx are not installed.${NC}"
-        read -p "Do you want to try installing them now? (Y/n): " INSTALL_NODE
-        INSTALL_NODE=${INSTALL_NODE:-Y}
-        if [[ "$INSTALL_NODE" =~ ^[Yy]$ ]]; then
-            if command -v brew &> /dev/null; then
-                brew install node
-            elif command -v apt-get &> /dev/null; then
-                sudo apt-get update && sudo apt-get install -y nodejs npm
-            else
-                echo -e "${RED}Could not find brew or apt-get. Please install Node.js manually: https://nodejs.org/${NC}"
-                exit 1
-            fi
-        else
-            echo -e "${RED}Node.js is required to use BMAD. Exiting.${NC}"
-            exit 1
-        fi
-    fi
-
-    if ! command -v git &> /dev/null; then
-        echo -e "${YELLOW}Git is not installed.${NC}"
-        read -p "Do you want to try installing Git now? (Y/n): " INSTALL_GIT
-        INSTALL_GIT=${INSTALL_GIT:-Y}
-        if [[ "$INSTALL_GIT" =~ ^[Yy]$ ]]; then
-            if command -v brew &> /dev/null; then
-                brew install git
-            elif command -v apt-get &> /dev/null; then
-                sudo apt-get update && sudo apt-get install -y git
-            else
-                echo -e "${RED}Could not find brew or apt-get. Please install Git manually.${NC}"
-                exit 1
-            fi
-        else
-            echo -e "${YELLOW}Git is not installed. Some Git-related features will be disabled.${NC}"
-        fi
-    fi
-}
-
-install_prereqs
-
-echo -e "\n${BLUE}--- Configuration ---${NC}"
-
-# 1. Tools
-echo -e "${YELLOW}Available BMAD tools:${NC}"
-echo -e "  - ${GREEN}antigravity${NC} (default)"
-echo -e "  - ${GREEN}roo-cline${NC}"
-echo -e "  - ${GREEN}cursor${NC}"
-echo -e "  - ${GREEN}windsurf${NC}"
-echo -e "  - ${GREEN}copilot${NC}"
-read -p "Which tools do you want to install with BMAD? (comma separated, default: antigravity): " BMAD_TOOLS
-BMAD_TOOLS=${BMAD_TOOLS:-antigravity}
-
-# 2. Git Init
-read -p "Should bmad-init automatically initialize a git repository? (Y/n): " AUTO_GIT_INIT
-AUTO_GIT_INIT=${AUTO_GIT_INIT:-Y}
-
-# 3 & 4. Git Identity (only if Git Init is yes)
-if [[ "$AUTO_GIT_INIT" =~ ^[Yy]$ ]]; then
-    CURRENT_GIT_NAME=$(git config --global user.name 2>/dev/null || echo "")
-    if [ -n "$CURRENT_GIT_NAME" ]; then
-        read -p "Git user.name (default: $CURRENT_GIT_NAME): " GIT_NAME
-        GIT_NAME=${GIT_NAME:-$CURRENT_GIT_NAME}
-    else
-        read -p "Git user.name: " GIT_NAME
-    fi
-
-    CURRENT_GIT_EMAIL=$(git config --global user.email 2>/dev/null || echo "")
-    if [ -n "$CURRENT_GIT_EMAIL" ]; then
-        read -p "Git user.email (default: $CURRENT_GIT_EMAIL): " GIT_EMAIL
-        GIT_EMAIL=${GIT_EMAIL:-$CURRENT_GIT_EMAIL}
-    else
-        read -p "Git user.email: " GIT_EMAIL
-    fi
-fi
-
-# Save configuration securely
-CONFIG_FILE="$HOME/.bmad-init-rc"
-{
-    printf "BMAD_TOOLS=%q\n" "$BMAD_TOOLS"
-    printf "AUTO_GIT_INIT=%q\n" "$AUTO_GIT_INIT"
-    printf "GIT_NAME=%q\n" "$GIT_NAME"
-    printf "GIT_EMAIL=%q\n" "$GIT_EMAIL"
-} > "$CONFIG_FILE"
-
-echo -e "${GREEN}Configuration saved to $CONFIG_FILE${NC}"
-
-echo -e "\n${BLUE}--- Installing bmad-init CLI ---${NC}"
-# Get the directory where install.sh is located
+# Define paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_FILE="$SCRIPT_DIR/bmad-init"
+COMMAND_NAME="bmad-init"
 
 if [ ! -f "$SRC_FILE" ]; then
     echo -e "${RED}Error: Cannot find $SRC_FILE in the current directory.${NC}"
     exit 1
 fi
 
-DEST_DIR="/usr/local/bin"
-COMMAND_NAME="bmad-init"
+DEST_DIR="${BMAD_DEST_DIR:-/usr/local/bin}"
+LOCAL_DEST_DIR="${BMAD_LOCAL_DEST_DIR:-$HOME/.local/bin}"
 
-echo -e "To install the command to $DEST_DIR, we may need sudo privileges."
-sudo cp "$SRC_FILE" "$DEST_DIR/$COMMAND_NAME"
-sudo chmod +x "$DEST_DIR/$COMMAND_NAME"
+install_to() {
+    local dest=$1
+    local use_sudo=$2
+    echo "Attempting to install to $dest..."
+    if [ "$use_sudo" = "yes" ]; then
+        sudo mkdir -p "$dest"
+        sudo cp "$SRC_FILE" "$dest/$COMMAND_NAME"
+        sudo chmod +x "$dest/$COMMAND_NAME"
+    else
+        mkdir -p "$dest"
+        cp "$SRC_FILE" "$dest/$COMMAND_NAME"
+        chmod +x "$dest/$COMMAND_NAME"
+    fi
+}
 
-if [ $? -eq 0 ]; then
-    echo -e "${BLUE}=== Installation Complete! ===${NC}"
-    echo -e "You can now run '${COMMAND_NAME}' in any project directory to initialize BMAD."
+# Optional Pre-configuration
+echo -e "\n${BLUE}--- Pre-configuration ---${NC}"
+read -p "Do you want to pre-configure bmad-init defaults now? (Y/n): " PRECONF
+PRECONF=${PRECONF:-Y}
+
+if [[ "$PRECONF" =~ ^[Yy]$ ]]; then
+    echo -e "Available tools: ${GREEN}antigravity, roo-cline, cursor, windsurf, copilot${NC}"
+    echo -e "Refer to ${BLUE}https://docs.bmad-method.org/${NC} for more details."
+    read -p "Default tools (comma separated) [antigravity]: " DEF_TOOLS
+    DEF_TOOLS=${DEF_TOOLS:-antigravity}
+    read -p "Auto initialize Git? (Y/n) [Y]: " DEF_GIT_INIT
+    DEF_GIT_INIT=${DEF_GIT_INIT:-Y}
+    read -p "Auto add BMAD to .gitignore? (Y/n) [Y]: " DEF_GIT_IGNORE
+    DEF_GIT_IGNORE=${DEF_GIT_IGNORE:-Y}
+    
+    # Save configuration securely
+    CONFIG_FILE="$HOME/.bmad-init-rc"
+    {
+        printf "BMAD_TOOLS=%q\n" "$DEF_TOOLS"
+        printf "AUTO_GIT_INIT=%q\n" "$DEF_GIT_INIT"
+        printf "AUTO_GIT_IGNORE=%q\n" "$DEF_GIT_IGNORE"
+    } > "$CONFIG_FILE"
+    echo -e "${GREEN}Default configuration saved to $CONFIG_FILE${NC}"
 else
-    echo -e "${RED}Installation to $DEST_DIR failed. Please check permissions.${NC}"
+    echo -e "${YELLOW}Skipping pre-configuration. bmad-init will use standard defaults.${NC}"
+    rm -f "$HOME/.bmad-init-rc"
+fi
+
+echo -e "\n${BLUE}--- Installing CLI ---${NC}"
+echo -e "Installing bmad-init to your system..."
+
+# If user can write to DEST_DIR without sudo, do it. Usually on macOS Homebrew setups.
+if [ -w "$DEST_DIR" ]; then
+    install_to "$DEST_DIR" "no"
+else
+    # Prefer LOCAL_DEST_DIR to avoid sudo whenever possible for open source devs
+    if [ -d "$LOCAL_DEST_DIR" ] || mkdir -p "$LOCAL_DEST_DIR" 2>/dev/null; then
+        install_to "$LOCAL_DEST_DIR" "no"
+        if [ $? -eq 0 ]; then
+            echo -e "${YELLOW}Note: Make sure $LOCAL_DEST_DIR is in your system \$PATH.${NC}"
+            DEST_DIR=$LOCAL_DEST_DIR
+        fi
+    else
+        # Fallback to global with sudo
+        echo -e "${YELLOW}Sudo is required to install globally into $DEST_DIR.${NC}"
+        install_to "$DEST_DIR" "yes"
+    fi
+fi
+
+if command -v $COMMAND_NAME >/dev/null 2>&1 || [ -f "$DEST_DIR/$COMMAND_NAME" ]; then
+    echo -e "\n${GREEN}=== Installation Complete! ===${NC}"
+    echo -e "You can now run '${COMMAND_NAME}' in any of your projects."
+    echo -e "Run '${COMMAND_NAME} --help' to see all available options."
+else
+    echo -e "${RED}Installation failed.${NC}"
+    exit 1
 fi

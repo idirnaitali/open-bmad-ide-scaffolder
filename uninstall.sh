@@ -9,11 +9,10 @@ NC='\033[0m'
 
 echo -e "${BLUE}=== BMAD Uninstaller ===${NC}"
 
-DEST_DIR="/usr/local/bin"
 COMMAND_NAME="bmad-init"
 CONFIG_FILE="$HOME/.bmad-init-rc"
 
-read -p "Are you sure you want to uninstall BMAD Initializer? (Y/n): " UNINSTALL_CONFIRM
+read -p "Are you sure you want to uninstall Open BMAD IDE Scaffolder? (Y/n): " UNINSTALL_CONFIRM
 UNINSTALL_CONFIRM=${UNINSTALL_CONFIRM:-Y}
 
 if [[ ! "$UNINSTALL_CONFIRM" =~ ^[Yy]$ ]]; then
@@ -21,23 +20,33 @@ if [[ ! "$UNINSTALL_CONFIRM" =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
-# 1. Remove the CLI command
-if [ -f "$DEST_DIR/$COMMAND_NAME" ]; then
-    echo -e "Removing $COMMAND_NAME from $DEST_DIR..."
-    if [ -w "$DEST_DIR" ]; then
-        rm "$DEST_DIR/$COMMAND_NAME"
-    else
-        echo -e "${YELLOW}Sudo privileges required to remove from $DEST_DIR.${NC}"
-        sudo rm "$DEST_DIR/$COMMAND_NAME"
+# 1. Remove the CLI command from all possible installation paths
+GLOBAL_DIR="${BMAD_DEST_DIR:-/usr/local/bin}"
+LOCAL_DIR="${BMAD_LOCAL_DEST_DIR:-$HOME/.local/bin}"
+PATHS_TO_CHECK=("$GLOBAL_DIR" "$LOCAL_DIR")
+FOUND=false
+
+for DEST_DIR in "${PATHS_TO_CHECK[@]}"; do
+    if [ -f "$DEST_DIR/$COMMAND_NAME" ]; then
+        FOUND=true
+        echo -e "Removing $COMMAND_NAME from $DEST_DIR..."
+        if [ -w "$DEST_DIR/$COMMAND_NAME" ] || [ -w "$DEST_DIR" ]; then
+            rm -f "$DEST_DIR/$COMMAND_NAME"
+        else
+            echo -e "${YELLOW}Sudo privileges required to remove from $DEST_DIR.${NC}"
+            sudo rm -f "$DEST_DIR/$COMMAND_NAME"
+        fi
+        
+        if [ ! -f "$DEST_DIR/$COMMAND_NAME" ]; then
+            echo -e "${GREEN}Successfully removed $COMMAND_NAME from $DEST_DIR.${NC}"
+        else
+            echo -e "${RED}Failed to remove $COMMAND_NAME from $DEST_DIR.${NC}"
+        fi
     fi
-    
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}Successfully removed $COMMAND_NAME.${NC}"
-    else
-        echo -e "${RED}Failed to remove $COMMAND_NAME.${NC}"
-    fi
-else
-    echo -e "${YELLOW}$COMMAND_NAME not found in $DEST_DIR. Skipping.${NC}"
+done
+
+if [ "$FOUND" = false ]; then
+    echo -e "${YELLOW}$COMMAND_NAME not found in standard paths. Skipping.${NC}"
 fi
 
 # 2. Remove configuration file
