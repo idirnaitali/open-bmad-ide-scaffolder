@@ -58,3 +58,14 @@ bmad-init
 ```
 
 Your project will then be instantly configured using your preset preferences!
+
+### 3. Uninstallation
+
+If you wish to remove the `bmad-init` tool and its configuration from your system, simply run:
+
+```bash
+chmod +x uninstall.sh
+./uninstall.sh
+```
+
+*(This will safely remove the CLI command from `/usr/local/bin` and delete your saved preferences).*
