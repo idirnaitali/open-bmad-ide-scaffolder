@@ -1,34 +1,65 @@
 #!/bin/bash
 
-# Color configuration
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+# ==============================================================================
+# Script: bmad-init
+# Purpose: CLI tool to initialize the BMAD-METHOD framework in a user's project.
+#          - Installs required bmad context, tools, and structures via npx.
+#          - Manages git repository initialization and .gitignore updates.
+#          - Can execute interactively, via flags, or based on saved user config.
+# Usage: bmad-init [options] OR bmad-init --help
+# ==============================================================================
 
+# --- Console Color Definitions ---
+# These variables define ANSI escape codes used to colorize the terminal output.
+# Doing this makes messages much easier to read for the user.
+GREEN='\033[0;32m'   # Used for success messages.
+BLUE='\033[0;34m'    # Used for information highlights and headers.
+RED='\033[0;31m'     # Used for error and failure messages.
+YELLOW='\033[1;33m'  # Used for warnings or skipped actions.
+NC='\033[0m'         # No Color (resets the terminal color back to default).
+
+# --- Global Configurations ---
+# Target the config file usually located in the user's home directory.
 CONFIG_FILE="$HOME/.bmad-init-rc"
 
-# Default fallback values
-DEF_TOOLS="antigravity"
-DEF_GIT_INIT="Y"
-DEF_GIT_IGNORE="Y"
+# Set up the default fallback values in case the user has not configured anything yet.
+BMAD_TOOLS="antigravity"
+AUTO_GIT_INIT="Y"
+AUTO_GIT_IGNORE="Y"
 
-# Load global config if exists
+# ==============================================================================
+# Step 1: Load User's Global Configuration (if it exists)
+# ==============================================================================
+# Check if the configuration file physically exists.
 if [ -f "$CONFIG_FILE" ]; then
-    source "$CONFIG_FILE"
-else
-    BMAD_TOOLS="$DEF_TOOLS"
-    AUTO_GIT_INIT="$DEF_GIT_INIT"
-    AUTO_GIT_IGNORE="$DEF_GIT_IGNORE"
+    # Read the file line by line safely using IFS='=' to split keys and values.
+    while IFS='=' read -r key value || [ -n "$key" ]; do
+        # Strip potential quotes or escapes around the value just to be safe and avoid script errors.
+        value="${value%\"}"; value="${value#\"}"
+        value="${value%\'}"; value="${value#\'}"
+        
+        # Match the extracted key to our script variables.
+        case "$key" in
+            BMAD_TOOLS) BMAD_TOOLS="$value" ;;            # Overwrite tools default
+            AUTO_GIT_INIT) AUTO_GIT_INIT="$value" ;;      # Overwrite git init default
+            AUTO_GIT_IGNORE) AUTO_GIT_IGNORE="$value" ;;  # Overwrite git ignore default
+        esac
+    done < "$CONFIG_FILE"
 fi
 
-# Variables for this run
+# ==============================================================================
+# Step 2: Set tracking variables for the current execution
+# ==============================================================================
+# These variables will hold exactly what we decide to run *this time*.
 RUN_TOOLS=""
 RUN_GIT_INIT=""
 RUN_GIT_IGNORE=""
+
+# By default, we run in interactive mode, asking the user questions.
 INTERACTIVE=true
 
+# --- Helper Function: show_help ---
+# Prints out instructions on how to use the CLI and exits the script cleanly.
 show_help() {
     echo -e "${BLUE}bmad-init - Open BMAD IDE Scaffolder${NC}"
     echo "Usage: bmad-init [options]"
@@ -40,131 +71,217 @@ show_help() {
     echo "  --no-ignore        Do not add BMAD folders to .gitignore"
     echo "  config set <k> <v> Set global default config (keys: tools, auto-git, auto-ignore)"
     echo "  -h, --help         Show this help message"
-    exit 0
+    exit 0 # Exit code 0 means everything went fine.
 }
 
-# Parse Arguments
+# ==============================================================================
+# Step 3: Parse Command Line Arguments
+# ==============================================================================
+# Loop through all arguments passed into the script via the command line.
+# "$#" is the number of arguments passed in.
 while [[ "$#" -gt 0 ]]; do
     case $1 in
+        # If the user passed -y or --yes, disable interactive prompts.
         -y|--yes) INTERACTIVE=false; shift ;;
-        -t|--tools) RUN_TOOLS="$2"; shift 2 ;;
+        
+        # If the user passed -t or --tools, capture the next argument as the tool list.
+        -t|--tools) 
+            # Ensure the next argument ($2) exists and isn't another flag (like -y).
+            if [ -n "${2:-}" ] && [[ "${2:-}" != -* ]]; then
+                RUN_TOOLS="$2"; shift 2 # Consume two arguments (the flag and the value).
+            else
+                # We expected a tool name but didn't get one. Spit out an error!
+                echo -e "${RED}Error: Argument for $1 is missing${NC}" >&2; exit 1
+            fi ;;
+            
+        # Specific flag to forcibly disable git initialization for this run.
         --no-git) RUN_GIT_INIT="N"; shift ;;
+        
+        # Specific flag to forcibly disable adding to .gitignore for this run.
         --no-ignore) RUN_GIT_IGNORE="N"; shift ;;
+        
+        # Any help flag triggers the help function.
         -h|--help) show_help ;;
+        
+        # 'config' is a subcommand system to manage the global config file.
         config)
+            # Make sure the next argument is 'set'
             if [ "$2" == "set" ]; then
-                KEY=$3
-                VAL=$4
+                KEY=$3 # The key (e.g., tools, auto-git)
+                VAL=$4 # The value (e.g., antigravity, Y, N)
+                
+                # We need both key and value to proceed.
                 if [ -z "$KEY" ] || [ -z "$VAL" ]; then
                     echo "Usage: bmad-init config set <key> <value>"
                     exit 1
                 fi
-                # Read current config to avoid overwriting all
+                
+                # Temporarily store the CURRENT values so we only update the requested one.
                 T="$BMAD_TOOLS"; I="$AUTO_GIT_INIT"; IG="$AUTO_GIT_IGNORE"
+                
+                # Find out what the user is trying to set, and overwrite just that temp variable.
                 case $KEY in
                     tools) T="$VAL" ;;
                     auto-git) I="$VAL" ;;
                     auto-ignore) IG="$VAL" ;;
                     *) echo "Unknown key: $KEY"; exit 1 ;;
                 esac
-                printf "BMAD_TOOLS=%q\nAUTO_GIT_INIT=%q\nAUTO_GIT_IGNORE=%q\n" "$T" "$I" "$IG" > "$CONFIG_FILE"
+                
+                # Rewrite the entire config file with the updated combo of old/new values.
+                printf "BMAD_TOOLS=%s\nAUTO_GIT_INIT=%s\nAUTO_GIT_IGNORE=%s\n" "$T" "$I" "$IG" > "$CONFIG_FILE"
+                
                 echo -e "${GREEN}Global config upated in $CONFIG_FILE${NC}"
-                exit 0
+                exit 0 # We finished configuring, so we terminate the run.
+            else
+                # The user typed 'config' but followed it with garbage.
+                echo -e "${RED}Unknown config subcommand or missing arguments.${NC}"
+                show_help
             fi
             ;;
+            
+        # Catch-all: If the user typed an argument we don't recognize, print it and show help.
         *) echo "Unknown parameter passed: $1"; show_help ;;
     esac
 done
 
 echo -e "${BLUE}=== Initializing BMAD-METHOD ===${NC}"
 
-# Check for prerequisites
+# ==============================================================================
+# Step 4: Prerequisite Checks
+# ==============================================================================
+# We must ensure NodeJS and NPM/NPX are actually installed on the machine.
+# Check standard command paths invisibly.
 if ! command -v node &> /dev/null || ! command -v npx &> /dev/null; then
     echo -e "${RED}Error: Node.js and npx must be installed to continue.${NC}"
     echo -e "Please install Node.js from https://nodejs.org/"
-    exit 1
+    exit 1 # Hard fail, cannot proceed without NodeJS.
 fi
 
-# Interactive mode
+# ==============================================================================
+# Step 5: Resolve final configurations (Interactive vs Scripted)
+# ==============================================================================
 if [ "$INTERACTIVE" = true ]; then
     USE_DEFAULTS="N"
     
+    # Check if a custom global configuration has already been established and read into memory.
     if [ -f "$CONFIG_FILE" ]; then
         echo -e "${YELLOW}Current default configuration:${NC}"
         echo -e "  - Tools: ${GREEN}${BMAD_TOOLS}${NC}"
         echo -e "  - Auto Git Init: ${GREEN}${AUTO_GIT_INIT}${NC}"
         echo -e "  - Auto Git Ignore: ${GREEN}${AUTO_GIT_IGNORE}${NC}"
         echo ""
+        # Ask if they want to fast-track and just use these defaults.
         read -p "Do you want to use this default configuration? (Y/n) [Y]: " USE_DEFAULTS
         USE_DEFAULTS=${USE_DEFAULTS:-Y}
     fi
 
+    # Using regex to quickly check if the response was Y or y.
     if [[ "$USE_DEFAULTS" =~ ^[Yy]$ ]]; then
-        RUN_TOOLS=$BMAD_TOOLS
-        RUN_GIT_INIT=$AUTO_GIT_INIT
-        RUN_GIT_IGNORE=$AUTO_GIT_IGNORE
+        # Take whatever values exist from the command line, OR default to the global config values.
+        RUN_TOOLS=${RUN_TOOLS:-$BMAD_TOOLS}
+        RUN_GIT_INIT=${RUN_GIT_INIT:-$AUTO_GIT_INIT}
+        RUN_GIT_IGNORE=${RUN_GIT_IGNORE:-$AUTO_GIT_IGNORE}
     else
+        # We are doing a fully interactive, manual setup for this project specifically.
         if [ -f "$CONFIG_FILE" ]; then
             echo -e "\n${YELLOW}Customize for this project:${NC}"
         else
             echo -e "${YELLOW}Configure this project (press Enter to accept standard defaults):${NC}"
         fi
+        
+        # Display available tools for context.
         echo -e "Available tools: ${GREEN}antigravity, roo-cline, cursor, windsurf, copilot${NC}"
         echo -e "Refer to ${BLUE}https://docs.bmad-method.org/${NC} for more details."
         
-        read -p "Tools (comma separated) [$BMAD_TOOLS]: " input_tools
-        RUN_TOOLS=${input_tools:-$BMAD_TOOLS}
+        # 1. Ask for tools
+        DEFAULT_TOOLS_PROMPT=${RUN_TOOLS:-$BMAD_TOOLS}
+        read -p "Tools (comma separated) [$DEFAULT_TOOLS_PROMPT]: " input_tools
+        RUN_TOOLS=${input_tools:-$DEFAULT_TOOLS_PROMPT}
         
-        read -p "Init git repository? (Y/n) [$AUTO_GIT_INIT]: " input_git
-        RUN_GIT_INIT=${input_git:-$AUTO_GIT_INIT}
+        # 2. Ask for git initialization
+        DEFAULT_GIT_PROMPT=${RUN_GIT_INIT:-$AUTO_GIT_INIT}
+        read -p "Init git repository? (Y/n) [$DEFAULT_GIT_PROMPT]: " input_git
+        RUN_GIT_INIT=${input_git:-$DEFAULT_GIT_PROMPT}
         
+        # 3. If git init is Yes, ask if they want to ignore standard bmad folders.
         if [[ "$RUN_GIT_INIT" =~ ^[Yy]$ ]]; then
-            read -p "Add BMAD folders to .gitignore? (Y/n) [$AUTO_GIT_IGNORE]: " input_ignore
-            RUN_GIT_IGNORE=${input_ignore:-$AUTO_GIT_IGNORE}
+            DEFAULT_IGNORE_PROMPT=${RUN_GIT_IGNORE:-$AUTO_GIT_IGNORE}
+            read -p "Add BMAD folders to .gitignore? (Y/n) [$DEFAULT_IGNORE_PROMPT]: " input_ignore
+            RUN_GIT_IGNORE=${input_ignore:-$DEFAULT_IGNORE_PROMPT}
         else
+            # If they don't want git initialized, then there is no gitignore to update.
             RUN_GIT_IGNORE="N"
         fi
     fi
 else
-    # Non-interactive overrides
+    # Non-interactive overrides: We simply merge command line arguments and global defaults.
+    # Command line arguments always take priority over saved configurations.
     RUN_TOOLS=${RUN_TOOLS:-$BMAD_TOOLS}
     RUN_GIT_INIT=${RUN_GIT_INIT:-$AUTO_GIT_INIT}
     RUN_GIT_IGNORE=${RUN_GIT_IGNORE:-$AUTO_GIT_IGNORE}
 fi
 
-# 1. BMAD Installation
+# ==============================================================================
+# Step 6: Core Execution (NPX Installer)
+# ==============================================================================
 echo -e "\n${GREEN}[1/3] Installing BMAD-METHOD (Tools: $RUN_TOOLS)...${NC}"
+
+# This command dynamically pulls the BMAD CLI module and executes its install process.
+# We pass directory `.`, module `bmm`, our `$RUN_TOOLS` list, and `--yes` to force it through non-interactively.
 npx bmad-method install --directory . --modules bmm --tools "$RUN_TOOLS" --yes
 
+# `$?` inherently tracks the success status (0/1) of the command right before it. 
+# Anything that is not 0 (!= 0) is a failure.
 if [ $? -ne 0 ]; then
     echo -e "${RED}Error: BMAD installation failed.${NC}"
     exit 1
 fi
 
-# 2. Git
+# ==============================================================================
+# Step 7: Git Management
+# ==============================================================================
+# Check if the user authorized Git initialization (Y/y checked by regex).
 if [[ "$RUN_GIT_INIT" =~ ^[Yy]$ ]]; then
-    if [ ! -d ".git" ]; then
-        echo -e "${GREEN}[2/3] Initializing Git repository...${NC}"
-        git init
+    # Double check that 'git' is actually installed on the server/machine.
+    if ! command -v git &> /dev/null; then
+        echo -e "${RED}Error: Git is not installed. Skipping Git initialization.${NC}"
     else
-        echo -e "${BLUE}[2/3] Git repository already exists, skipping init.${NC}"
-    fi
-
-    # 3. Gitignore & Commit
-    if [[ "$RUN_GIT_IGNORE" =~ ^[Yy]$ ]]; then
-        echo -e "${GREEN}[3/3] Adding BMAD folders to .gitignore...${NC}"
-        if [ ! -f .gitignore ] || ! grep -q "_bmad" .gitignore; then
-            echo -e "\n# BMAD-METHOD artifacts\n.agent/\n_bmad/\n_bmad-output/" >> .gitignore
+        # Only initialize git if it doesn't already exist in this folder to avoid messing up an existing repository.
+        if [ ! -d ".git" ]; then
+            echo -e "${GREEN}[2/3] Initializing Git repository...${NC}"
+            git init
+        else
+            echo -e "${BLUE}[2/3] Git repository already exists, skipping init.${NC}"
         fi
-        git add .gitignore 2>/dev/null
-        git commit -m "chore: Gitignore BMAD-METHOD folders" >/dev/null 2>&1 || true
-    else
-        echo -e "${GREEN}[3/3] Creating initial BMAD commit...${NC}"
-        git add .agent _bmad _bmad-output 2>/dev/null
-        git commit -m "chore: Init project with BMAD-METHOD" >/dev/null 2>&1 || true
+
+        # ==============================================================================
+        # Step 8: Git Ignore and Commit Setup
+        # ==============================================================================
+        if [[ "$RUN_GIT_IGNORE" =~ ^[Yy]$ ]]; then
+            echo -e "${GREEN}[3/3] Adding BMAD folders to .gitignore...${NC}"
+            
+            # Create a .gitignore if it doesn't exist AND inject our ignore patterns 
+            # ONLY if "_bmad" doesn't already exist inside it using `grep -q`.
+            if [ ! -f .gitignore ] || ! grep -q "_bmad" .gitignore; then
+                # Using >> appends to the file rather than overwriting it entirely.
+                echo -e "\n# BMAD-METHOD artifacts\n.agent/\n_bmad/\n_bmad-output/" >> .gitignore
+            fi
+            
+            # Try to add .gitignore to git, sending output/errors to the void (/dev/null) to keep console clean.
+            git add .gitignore 2>/dev/null
+            # Make a commit. `|| true` ensures that even if this fails (e.g., git username not set), the script doesn't crash.
+            git commit -m "chore: Gitignore BMAD-METHOD folders" >/dev/null 2>&1 || true
+        else
+            # User explicitly opted to commit all BMAD methodology files instead of ignoring them.
+            echo -e "${GREEN}[3/3] Creating initial BMAD commit...${NC}"
+            git add .agent _bmad _bmad-output 2>/dev/null
+            git commit -m "chore: Init project with BMAD-METHOD" >/dev/null 2>&1 || true
+        fi
     fi
 else
+    # The user configuredgit init to be "N".
     echo -e "${BLUE}Skipping Git initialization.${NC}"
 fi
 
+# Final completion message. Script will naturally exit 0 hereafter.
 echo -e "\n${BLUE}=== Done! BMAD-METHOD is ready in this workspace. ===${NC}"
